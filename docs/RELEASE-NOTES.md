@@ -19,3 +19,7 @@ Inspected Syvo before implementation:
 - Existing REST namespace `syvo/v1` exists, so the plugin uses `syvo-bd/v1`
 
 No existing theme/plugin source was modified by this plugin.
+
+
+## 1.2.0
+Premium frontend and full location hierarchy.
