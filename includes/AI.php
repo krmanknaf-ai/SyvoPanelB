@@ -43,7 +43,7 @@ final class AIService {
         $prompt="تو نویسنده محتوای محلی برای دایرکتوری Syvo هستی. فقط بر اساس داده زیر یک متن فارسی طبیعی 180 تا 300 کلمه‌ای برای انتهای صفحه بنویس. هیچ ادعای جدید، رتبه، جایزه، مشتری، آمار یا ویژگی جغرافیایی نساز. نام شهر و دسته را دقیق نگه دار. از keyword stuffing خودداری کن. فقط HTML امن با پاراگراف و در صورت نیاز یک H2 کوتاه بده.\nدسته: ".$ctx['category']->name."\nمکان: ".$ctx['location']['name_fa']."\nکسب‌وکارهای واقعی: ".wp_json_encode($businessData,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
         return self::provider()->generate($prompt,['job'=>'generate_page_seo']);
     }
-    public static function classifyBusiness(int $businessId): true|\WP_Error {
+    public static function classifyBusiness(int $businessId): bool|\WP_Error {
         $post=get_post($businessId);if(!$post)return true;$text=Security::normalize_text($post->post_title.' '.$post->post_content.' '.(string)get_post_meta($businessId,BusinessMeta::SERVICES_RAW,true));
         $existing=CategoryService::categoryIdsFromInput([],preg_split('/[,،\n]+/u',$text)?:[]);if($existing){set_post_terms_checked($businessId,SYVO_BD_CATEGORY_TAX,$existing);PageService::markByBusiness($businessId);return true;}
         $p=self::provider();if(!$p->isConfigured())return true;

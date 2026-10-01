@@ -39,7 +39,7 @@ final class Database {
         return $schedules;
     }
 
-    public static function install(): true|\WP_Error {
+    public static function install(): bool|\WP_Error {
         global $wpdb;
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         $charset = $wpdb->get_charset_collate();

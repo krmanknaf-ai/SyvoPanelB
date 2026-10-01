@@ -157,7 +157,7 @@ final class Upgrade {
 }
 
 final class Activation {
-    public static function run(): true|\WP_Error {
+    public static function run(): bool|\WP_Error {
         $db = Database::install();
         if (is_wp_error($db)) { return $db; }
         Register::post_types();
