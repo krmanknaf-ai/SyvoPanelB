@@ -1,34 +1,136 @@
 (function(window,document){'use strict';
-window.SyvoBD=window.SyvoBD||{};
 const C=window.SyvoBDConfig||{};
+const q=(s,c=document)=>c.querySelector(s), qa=(s,c=document)=>Array.from(c.querySelectorAll(s));
+const esc=t=>String(t??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+const icon=n=>({arrow:'<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>',check:'<svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>',search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',pin:'<svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-12A7 7 0 0 0 5 9c0 5.8 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/></svg>'}[n]||'');
 const api=(path,opts={})=>fetch((C.rest||'')+path,Object.assign({credentials:'same-origin',headers:Object.assign({'Accept':'application/json','Content-Type':'application/json','X-WP-Nonce':C.nonce||''},opts.headers||{})},opts)).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message||'خطا در ارتباط با سرور');return j;});
-SyvoBD.api=api;
-const qs=(s,c=document)=>c.querySelector(s), qsa=(s,c=document)=>Array.from(c.querySelectorAll(s));
-function esc(t){return String(t??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
-function showMessage(el,msg,ok=false){if(el){el.textContent=msg;el.className=ok?'syvo-bd-success':'syvo-bd-notice';}}
-function renderResults(el,items){el.innerHTML='';if(!items.length){el.textContent='نتیجه‌ای پیدا نشد.';return;}items.forEach(item=>{const card=document.createElement('article');card.className='syvo-bd-business-card';card.innerHTML='<div class="syvo-bd-card-main"><span class="syvo-bd-status">'+esc(item.completeness)+'% تکمیل</span><h3><a class="syvo-bd-link" href="'+esc(item.url||'#')+'">'+esc(item.name)+'</a></h3><p>'+esc((item.description||'').slice(0,160))+'</p><div class="syvo-bd-tags">'+(item.services||[]).slice(0,4).map(s=>'<span>'+esc(s)+'</span>').join('')+'</div></div><div class="syvo-bd-card-meta"><span>'+esc(item.city||'')+'</span></div>';el.appendChild(card);});}
-async function loadLocations(){const s=qs('[data-province]')||qs('[data-search-province]');if(!s)return;try{const rows=await api('locations/provinces');s.innerHTML='<option value="">انتخاب استان</option>';rows.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.name_fa;s.appendChild(o);});}catch(e){s.innerHTML='<option value="">استان‌ها بارگذاری نشدند</option>';console.error(e);}}
-async function loadChildren(select,type,parentId){const endpoint=type==='county'?'locations/counties':'locations/cities';const key=type==='county'?'province_id':'county_id';select.innerHTML='<option value="">در حال بارگذاری...</option>';select.disabled=true;try{const rows=await api(endpoint+'?'+encodeURIComponent(key)+'='+encodeURIComponent(parentId));select.innerHTML='<option value="">انتخاب کنید</option>';rows.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.name_fa;select.appendChild(o);});select.disabled=false;}catch(e){select.innerHTML='<option value="">خطا در بارگذاری</option>';console.error(e);}}
-function initCategoryTree(root){if(!root)return;api('categories').then(nodes=>{root.innerHTML='';const walk=(items,parent)=>items.forEach(n=>{const wrap=document.createElement('div');wrap.className='syvo-bd-category-item';const label=document.createElement('label');const cb=document.createElement('input');cb.type='checkbox';cb.name='category_ids[]';cb.value=n.id;label.append(cb,document.createTextNode(' '+n.name));wrap.appendChild(label);if(n.children&&n.children.length){const child=document.createElement('div');child.className='syvo-bd-category-children';wrap.appendChild(child);walk(n.children,child);}parent.appendChild(wrap);});walk(nodes,root);}).catch(()=>{root.textContent='دسته‌بندی‌ها بارگذاری نشدند.';});}
-function initWizard(root){const form=qs('[data-business-form]',root);if(!form)return;let step=1;const total=9;const steps=qsa('[data-step]',form);const stepper=qs('[data-stepper]',root);if(stepper)for(let i=1;i<=total;i++){const sp=document.createElement('span');sp.dataset.i=i;stepper.appendChild(sp);}function render(){steps.forEach(s=>s.classList.toggle('is-active',Number(s.dataset.step)===step));qsa('[data-stepper] span',root).forEach((s,i)=>s.classList.toggle('active',i<step));qs('[data-prev]',root).disabled=step===1;qs('[data-next]',root).hidden=step>=8;qs('[data-submit]',root).hidden=step!==8; if(step===8)buildReview();}
-function buildReview(){const out=qs('[data-review]',root);if(!out)return;const fd=new FormData(form);let rows=[];['name','brand','business_mobile','phone','business_email','website','province_id','county_id','city_id','neighborhood','street','alley','plaque','unit','floor','postal_code','address','description'].forEach(k=>{if(fd.get(k))rows.push('<div><strong>'+esc(k)+'</strong><span>'+esc(fd.get(k))+'</span></div>');});out.innerHTML=rows.map(x=>'<div class="syvo-bd-address-list">'+x+'</div>').join('');}
-qs('[data-next]',root).addEventListener('click',()=>{if(step<9){step++;render();}});qs('[data-prev]',root).addEventListener('click',()=>{if(step>1){step--;render();}});qs('[data-draft]',root).addEventListener('click',async()=>{const obj=Object.fromEntries(new FormData(form).entries());localStorage.setItem('syvo_bd_draft',JSON.stringify(obj));if(C.nonce){try{await api('draft',{method:'POST',body:JSON.stringify({data:obj})});}catch(e){}}showMessage(qs('[data-success]',root),'پیش‌نویس ذخیره شد.',true);});const province=qs('[data-province]',root),county=qs('[data-county]',root),city=qs('[data-city]',root);if(province)province.addEventListener('change',()=>loadChildren(county,'county',province.value));if(county)county.addEventListener('change',()=>loadChildren(city,'city',county.value));initCategoryTree(qs('[data-category-tree]',root));restoreDraft(form);api('draft').then(r=>{if(r&&r.data&&typeof r.data==='object'){Object.entries(r.data).forEach(([k,v])=>{const el=form.elements[k];if(el&&typeof v==='string'&&!el.value)el.value=v;});}}).catch(()=>{});initMap(qs('[data-form-map]',root),form);attachUploads(root);render();
-form.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(form).entries());d.category_ids=qsa('input[name="category_ids[]"]:checked',form).map(i=>Number(i.value));d.services=(d.services_text||'').split(/[,،\n]+/).map(s=>s.trim()).filter(Boolean);try{const res=await api('businesses',{method:'POST',body:JSON.stringify(d)});localStorage.removeItem('syvo_bd_draft');showMessage(qs('[data-success]',root),'ثبت انجام شد: '+res.name,true);step=9;render();}catch(err){showMessage(qs('[data-success]',root),err.message,false);}});}
-function restoreDraft(form){try{const x=JSON.parse(localStorage.getItem('syvo_bd_draft')||'{}');Object.entries(x).forEach(([k,v])=>{const el=form.elements[k];if(el&&typeof v==='string')el.value=v;});}catch(e){}}
-function initAccount(){const f=qs('[data-register-account]');if(!f)return;f.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(f).entries());const box=qs('[data-account-message]',f);try{await api('register',{method:'POST',body:JSON.stringify(d)});showMessage(box,'حساب ساخته شد؛ صفحه در حال بارگذاری است.',true);setTimeout(()=>window.location.reload(),500);}catch(err){showMessage(box,err.message);}});}
-function attachUploads(root){const form=qs('[data-business-form]',root);qsa('input[type=file]',root).forEach(inp=>inp.addEventListener('change',async()=>{for(const file of inp.files){const fd=new FormData();fd.append('file',file);try{const res=await fetch((C.rest||'')+'upload',{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':C.nonce||''},body:fd});const j=await res.json();if(!res.ok)throw new Error(j.message||'آپلود ناموفق');const hidden=document.createElement('input');hidden.type='hidden';hidden.name=inp.hasAttribute('data-upload-logo')?'logo_id':(inp.hasAttribute('data-upload-featured')?'featured_id':'gallery_ids[]');hidden.value=j.id;form.appendChild(hidden);const img=document.createElement('img');img.src=j.url;qs('[data-media-preview]',root).appendChild(img);}catch(err){showMessage(qs('[data-success]',root),err.message,false);}}}));}
-function initSearch(root){if(!root)return;const p=qs('[data-search-province]',root),c=qs('[data-search-county]',root),city=qs('[data-search-city]',root),q=qs('[data-search-q]',root),res=qs('[data-search-results]',root);const presetCategory=new URLSearchParams(window.location.search).get('category');if(p)p.addEventListener('change',()=>loadChildren(c,'county',p.value));if(c)c.addEventListener('change',()=>loadChildren(city,'city',c.value));qs('[data-search-submit]',root).addEventListener('click',async()=>{res.innerHTML='<div class="syvo-bd-loading">در حال جستجو...</div>';try{const sp=new URLSearchParams();if(q.value)sp.set('q',q.value);if(p.value)sp.set('province_id',p.value);if(presetCategory)sp.set('category_slug',presetCategory);if(c.value)sp.set('county_id',c.value);if(city.value)sp.set('city_id',city.value);sp.set('per_page','30');const items=await api('search?'+sp.toString());renderResults(res,items.map(x=>({id:x.id,name:x.name,url:x.url||'#',description:x.description,city:x.city?.name_fa||'',services:x.services,completeness:x.completeness})));}catch(err){res.textContent=err.message;}});qs('[data-use-location]',root).addEventListener('click',()=>navigator.geolocation?.getCurrentPosition(async pos=>{try{const lat=pos.coords.latitude,lng=pos.coords.longitude;const sp=new URLSearchParams({lat:String(lat),lng:String(lng),per_page:'30'});const items=await api('search?'+sp.toString());renderResults(res,items);}catch(err){res.textContent=err.message;}},()=>{res.textContent='اجازه موقعیت مکانی داده نشد.'}));}
-function initMap(el,form){if(!el||typeof window.SyvoBDConfig==='undefined')return;const lat=Number(el.dataset.lat||0),lng=Number(el.dataset.lng||0);const map=new MapCanvas(el,lat||35.6892,lng||51.389);if(form)map.onMove=(a,b)=>{form.elements.lat.value=a;form.elements.lng.value=b;};el.closest('.syvo-bd-shell')?.querySelector('[data-current-location]')?.addEventListener('click',()=>navigator.geolocation?.getCurrentPosition(p=>{map.setCenter(p.coords.latitude,p.coords.longitude);},()=>{}));el.closest('.syvo-bd-shell')?.querySelector('[data-reverse]')?.addEventListener('click',async()=>{try{const d=await api('reverse-geocode?lat='+map.lat+'&lng='+map.lng);if(form){if(d.province){}if(d.city){}if(d.neighborhood)form.elements.neighborhood.value=d.neighborhood;if(d.street)form.elements.street.value=d.street;if(d.address)form.elements.address.value=d.address;}}catch(e){}});}
-function initMaps(){qsa('[data-map]').forEach(el=>initMap(el,null));qsa('[data-form-map]').forEach(el=>initMap(el,el.closest('form')));}
+function msg(el,text,ok=false){if(!el)return;el.textContent=text;el.className=text?(ok?'syvo-bd-success syvo-bd-message':'syvo-bd-notice syvo-bd-message'):'syvo-bd-message';}
+function setOptions(sel,rows,placeholder,disabled=false){if(!sel)return;sel.innerHTML='<option value="">'+placeholder+'</option>';rows.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.name_fa;sel.appendChild(o)});sel.disabled=disabled;}
+async function provinces(sel){try{const rows=await api('locations/provinces');setOptions(sel,rows,'انتخاب استان',false);return rows}catch(e){setOptions(sel,[],'استان‌ها بارگذاری نشدند',true);throw e}}
+async function counties(sel,provinceId){setOptions(sel,[],'در حال بارگذاری...',true);if(!provinceId){setOptions(sel,[],'ابتدا استان را انتخاب کنید',true);return[]}try{const rows=await api('locations/counties?province_id='+encodeURIComponent(provinceId));setOptions(sel,rows,'انتخاب شهرستان',false);return rows}catch(e){setOptions(sel,[],'خطا در بارگذاری شهرستان‌ها',true);throw e}}
+async function cities(sel,countyId){setOptions(sel,[],'در حال بارگذاری...',true);if(!countyId){setOptions(sel,[],'ابتدا شهرستان را انتخاب کنید',true);return[]}try{const rows=await api('locations/cities?county_id='+encodeURIComponent(countyId));setOptions(sel,rows,'انتخاب شهر',false);return rows}catch(e){setOptions(sel,[],'خطا در بارگذاری شهرها',true);throw e}}
+async function initLocationChain(root,mode){
+ const p=q(mode==='register'?'[data-province]':'[data-'+mode+'-province]',root);
+ const c=q(mode==='register'?'[data-county]':'[data-'+mode+'-county]',root);
+ const city=q(mode==='register'?'[data-city]':'[data-'+mode+'-city]',root);
+ if(!p||!c||!city)return;
+ try{
+  await provinces(p);
+  p.addEventListener('change',async()=>{setOptions(city,[],'ابتدا شهرستان را انتخاب کنید',true);await counties(c,p.value)});
+  c.addEventListener('change',async()=>{await cities(city,c.value)});
+ }catch(e){console.error(e)}
+}
+function initAccount(){
+ const f=q('[data-register-account]');if(!f)return;
+ f.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(f).entries());const box=q('[data-account-message]',f);
+  if(String(d.password||'').length<10)return msg(box,'رمز عبور باید حداقل ۱۰ کاراکتر باشد.');
+  if(d.password!==d.password_confirm)return msg(box,'تکرار رمز عبور با رمز عبور یکسان نیست.');
+  try{await api('register',{method:'POST',body:JSON.stringify(d)});msg(box,'حساب با موفقیت ساخته شد؛ در حال ورود به فرم ثبت کسب‌وکار…',true);setTimeout(()=>location.reload(),650)}catch(e){msg(box,e.message)}
+ });
+}
+function selectedCategoryCount(form){return qa('input[name="category_ids[]"]:checked',form).length}
+function initCategoryTree(root){
+ if(!root)return;
+ api('categories').then(nodes=>{
+  root.innerHTML='';
+  const walk=(items,parent,depth=0)=>items.forEach(n=>{
+   const card=document.createElement('div');card.className='syvo-bd-cat-row depth-'+depth;
+   const label=document.createElement('label');label.className='syvo-bd-cat-label';
+   const cb=document.createElement('input');cb.type='checkbox';cb.name='category_ids[]';cb.value=n.id;
+   label.append(cb,document.createTextNode(n.name));card.appendChild(label);
+   if(n.children&&n.children.length){const child=document.createElement('div');child.className='syvo-bd-cat-children';walk(n.children,child,depth+1);card.appendChild(child)}
+   parent.appendChild(card);
+  });
+  walk(nodes,root);
+ }).catch(()=>{root.innerHTML='<div class="syvo-bd-notice">دسته‌بندی‌ها بارگذاری نشدند.</div>'});
+}
+function initWizard(root){
+ const form=q('[data-business-form]',root);if(!form)return;
+ const steps=qa('[data-step]',form),total=steps.length,stepper=q('[data-stepper]',root),next=q('[data-next]',root),prev=q('[data-prev]',root),submit=q('[data-submit]',root),label=q('[data-step-label]',root),notice=q('[data-step-message]',root);
+ let step=1;
+ stepper.innerHTML='';for(let i=1;i<=total;i++){const s=document.createElement('span');s.dataset.step=i;s.setAttribute('aria-label','مرحله '+i);stepper.appendChild(s)}
+ function validate(){
+   if(step===1){if(!String(form.elements.name.value||'').trim())return msg(notice,'نام کسب‌وکار را وارد کنید.'),false;if(!String(form.elements.business_mobile.value||'').trim())return msg(notice,'شماره موبایل کسب‌وکار را وارد کنید.'),false}
+   if(step===2&&!selectedCategoryCount(form))return msg(notice,'حداقل یک دسته‌بندی انتخاب کنید.'),false;
+   if(step===3){if(!form.elements.province_id.value)return msg(notice,'استان را انتخاب کنید.'),false;if(!form.elements.county_id.value)return msg(notice,'شهرستان را انتخاب کنید.'),false;if(!form.elements.city_id.value)return msg(notice,'شهر را انتخاب کنید.'),false}
+   if(step===4&&!String(form.elements.address.value||'').trim())return msg(notice,'آدرس کامل کسب‌وکار را وارد کنید.'),false;
+   if(step===6&&!String(form.elements.description.value||'').trim())return msg(notice,'معرفی کسب‌وکار را وارد کنید.'),false;
+   return true;
+ }
+ function review(){
+  const out=q('[data-review]',root);if(!out)return;
+  const fd=new FormData(form),rows=[];
+  const map={name:'نام کسب‌وکار',brand:'برند',business_mobile:'موبایل',province_id:'استان',county_id:'شهرستان',city_id:'شهر',address:'آدرس',description:'معرفی'};
+  Object.entries(map).forEach(([k,l])=>{const el=form.elements[k];if(el&&String(el.value||'').trim()){let v=el.value;if(el.tagName==='SELECT')v=el.options[el.selectedIndex]?.text||v;rows.push('<div><span>'+esc(l)+'</span><strong>'+esc(v)+'</strong></div>')}});
+  rows.push('<div><span>دسته‌بندی</span><strong>'+esc(qa('input[name="category_ids[]"]:checked',form).map(i=>i.parentElement.textContent.trim()).join('، '))+'</strong></div>');
+  out.innerHTML=rows.join('');
+ }
+ function render(){
+  steps.forEach((el,i)=>el.classList.toggle('is-active',i===step-1));
+  qa('[data-stepper] span',root).forEach((el,i)=>{el.classList.toggle('done',i<step);el.classList.toggle('current',i===step-1)});
+  label.textContent='مرحله '+step+' از '+total;
+  prev.hidden=step===1;next.hidden=step===total;submit.hidden=step!==total;
+  if(step===total)review();
+  root.scrollIntoView({behavior:'smooth',block:'start'});
+ }
+ next.addEventListener('click',()=>{msg(notice,'');if(validate()){step++;render()}});
+ prev.addEventListener('click',()=>{if(step>1){msg(notice,'');step--;render()}});
+ q('[data-draft]',root)?.addEventListener('click',()=>{localStorage.setItem('syvo_bd_draft',JSON.stringify(Object.fromEntries(new FormData(form).entries())));msg(notice,'پیش‌نویس این فرم روی این دستگاه ذخیره شد.',true)});
+ initCategoryTree(q('[data-category-tree]',root));
+ initLocationChain(root,'register');
+ restoreDraft(form);
+ q('[data-current-location]',root)?.addEventListener('click',()=>navigator.geolocation?.getCurrentPosition(p=>{const el=q('[data-form-map]',root);if(el&&el.__map){el.__map.setCenter(p.coords.latitude,p.coords.longitude)}},()=>msg(notice,'اجازه موقعیت مکانی داده نشد.')));
+ attachUploads(root);
+ initMap(q('[data-form-map]',root),form);
+ render();
+ form.addEventListener('submit',async e=>{e.preventDefault();if(!validate())return;const data=Object.fromEntries(new FormData(form).entries());data.category_ids=qa('input[name="category_ids[]"]:checked',form).map(x=>Number(x.value));data.services=(data.services_text||'').split(/[,،\n]+/).map(x=>x.trim()).filter(Boolean);submit.disabled=true;try{const res=await api('businesses',{method:'POST',body:JSON.stringify(data)});localStorage.removeItem('syvo_bd_draft');msg(notice,'کسب‌وکار با موفقیت ثبت شد. صفحه در حال انتقال به پروفایل شماست.',true);setTimeout(()=>{location.href=res.url||C.home||'/dashboard/'},900)}catch(e){msg(notice,e.message)}finally{submit.disabled=false}});
+}
+function restoreDraft(form){try{const d=JSON.parse(localStorage.getItem('syvo_bd_draft')||'{}');Object.entries(d).forEach(([k,v])=>{const el=form.elements[k];if(el&&typeof v==='string'&&!el.value)el.value=v})}catch(e){}}
+function attachUploads(root){
+ const form=q('[data-business-form]',root);qa('input[type=file]',root).forEach(input=>input.addEventListener('change',async()=>{for(const file of input.files){const fd=new FormData();fd.append('file',file);try{const res=await fetch((C.rest||'')+'upload',{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':C.nonce||''},body:fd});const j=await res.json();if(!res.ok)throw new Error(j.message||'آپلود ناموفق');const hidden=document.createElement('input');hidden.type='hidden';hidden.name=input.hasAttribute('data-upload-logo')?'logo_id':(input.hasAttribute('data-upload-featured')?'featured_id':'gallery_ids[]');hidden.value=j.id;form.appendChild(hidden);const img=document.createElement('img');img.src=j.url||'';q('[data-media-preview]',root)?.appendChild(img)}catch(e){msg(q('[data-step-message]',root),e.message)}}}));
+}
+function initSearchPage(root){
+ if(!root)return;
+ initLocationChain(root,'search');
+ const p=q('[data-search-province]',root),c=q('[data-search-county]',root),city=q('[data-search-city]',root),term=q('[data-search-q]',root),results=q('[data-search-results]',root),count=q('[data-results-count]',root);
+ async function run(){
+  results.innerHTML='<div class="syvo-bd-loading">در حال جستجو…</div>';
+  try{
+   const sp=new URLSearchParams();if(term.value)sp.set('q',term.value);if(p.value)sp.set('province_id',p.value);if(c.value)sp.set('county_id',c.value);if(city.value)sp.set('city_id',city.value);
+   const preset=new URLSearchParams(location.search).get('category');if(preset)sp.set('category_slug',preset);sp.set('per_page','30');
+   const rows=await api('search?'+sp.toString());count.textContent=rows.length+' نتیجه';
+   results.innerHTML='';if(!rows.length){results.innerHTML='<div class="syvo-bd-empty-state"><div class="syvo-bd-empty-icon">'+icon('search')+'</div><h3>نتیجه‌ای پیدا نشد</h3><p>فیلترها یا عبارت جستجو را تغییر دهید.</p></div>';return}
+   rows.forEach(item=>{const a=document.createElement('article');a.className='syvo-bd-business-card';a.innerHTML='<div class="syvo-bd-business-main"><div class="syvo-bd-card-top"><span class="syvo-bd-status">کسب‌وکار</span><span class="syvo-bd-score">'+esc(item.completeness||0)+'% تکمیل</span></div><h3><a href="'+esc(item.url||'#')+'">'+esc(item.name||'')+'</a></h3><p>'+esc((item.description||'').slice(0,170))+'</p><div class="syvo-bd-tags">'+(item.services||[]).slice(0,4).map(s=>'<span>'+esc(s)+'</span>').join('')+'</div></div><div class="syvo-bd-business-side"><span>'+esc(item.city?.name_fa||'')+'</span><a class="syvo-bd-btn syvo-bd-btn-secondary syvo-bd-icon-btn" href="'+esc(item.url||'#')+'">'+icon('arrow')+'</a></div>';results.appendChild(a)});
+  }catch(e){results.innerHTML='<div class="syvo-bd-notice">'+esc(e.message)+'</div>'}
+ }
+ q('[data-search-submit]',root)?.addEventListener('click',run);term?.addEventListener('keydown',e=>{if(e.key==='Enter')run()});
+ q('[data-use-location]',root)?.addEventListener('click',()=>navigator.geolocation?.getCurrentPosition(async pos=>{try{const rows=await api('search?lat='+encodeURIComponent(pos.coords.latitude)+'&lng='+encodeURIComponent(pos.coords.longitude)+'&per_page=30');count.textContent=rows.length+' نتیجه';results.innerHTML='';rows.forEach(x=>{const el=document.createElement('div');el.className='syvo-bd-notice';el.textContent=x.name;results.appendChild(el)})}catch(e){msg(results,e.message)}},()=>msg(results,'اجازه موقعیت مکانی داده نشد.')));
+}
+function initHome(root){
+ const p=q('[data-home-province]',root),c=q('[data-home-county]',root),city=q('[data-home-city]',root),term=q('[data-home-q]',root);
+ if(!p)return;
+ provinces(p).catch(()=>{});
+ p.addEventListener('change',()=>{setOptions(city,[],'همه شهرها',true);counties(c,p.value)});
+ c.addEventListener('change',()=>cities(city,c.value));
+ q('[data-home-search]',root)?.addEventListener('click',()=>{const u=new URL(C.home+(C.home.endsWith('/')?'':'/')+'directory-search/');if(term.value)u.searchParams.set('q',term.value);if(p.value)u.searchParams.set('province_id',p.value);if(c.value)u.searchParams.set('county_id',c.value);if(city.value)u.searchParams.set('city_id',city.value);location.href=u.toString()});
+}
+function initMap(el,form){if(!el||!C.tile_url)return;const lat=Number(el.dataset.lat)||35.6892,lng=Number(el.dataset.lng)||51.389;el.__map=new MapCanvas(el,lat,lng,form)}
 class MapCanvas{
-constructor(el,lat,lng){this.el=el;this.lat=lat;this.lng=lng;this.zoom=12;this.points=[];this.canvas=document.createElement('canvas');this.el.appendChild(this.canvas);this.marker=document.createElement('div');this.marker.className='syvo-bd-map-marker';this.el.appendChild(this.marker);this.attribution=document.createElement('div');this.attribution.className='syvo-bd-map-attribution';this.attribution.textContent='© OpenStreetMap contributors';this.el.appendChild(this.attribution);this.ctx=this.canvas.getContext('2d');this.tiles={};this.bind();this.resize();window.addEventListener('resize',()=>this.resize());this.render();}
-resize(){this.canvas.width=this.el.clientWidth*devicePixelRatio;this.canvas.height=this.el.clientHeight*devicePixelRatio;this.canvas.style.width='100%';this.canvas.style.height='100%';this.ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);this.render();}
-project(lat,lng){const n=Math.pow(2,this.zoom),x=(lng+180)/360*n*256,y=(1-Math.asinh(Math.tan(lat*Math.PI/180))/Math.PI)/2*n*256;return{x,y};}
-unproject(x,y){const n=Math.pow(2,this.zoom),lng=x/(n*256)*360-180,yy=2*(1-y/(n*256)),lat=180/Math.PI*(2*Math.atan(Math.exp(yy*Math.PI))-Math.PI/2);return{lat,lng};}
-setCenter(a,b){this.lat=Math.max(-85,Math.min(85,a));this.lng=b;this.render();if(this.onMove)this.onMove(this.lat,this.lng);}
-setPoints(points){this.points=Array.isArray(points)?points.filter(p=>Number.isFinite(Number(p.lat))&&Number.isFinite(Number(p.lng))):[];this.render();}
-render(){const w=this.el.clientWidth,h=this.el.clientHeight;if(!w||!h)return;const center=this.project(this.lat,this.lng),left=center.x-w/2,top=center.y-h/2;const sx=Math.floor(left/256),ex=Math.ceil((left+w)/256),sy=Math.floor(top/256),ey=Math.ceil((top+h)/256);this.ctx.clearRect(0,0,w,h);for(let x=sx;x<=ex;x++)for(let y=sy;y<=ey;y++){const wrap=Math.pow(2,this.zoom),tx=((x%wrap)+wrap)%wrap,ty=y;if(ty<0||ty>=wrap)continue;const key=this.zoom+'/'+tx+'/'+ty;if(!this.tiles[key]){const img=new Image();img.crossOrigin='anonymous';img.onload=()=>{this.tiles[key]=img;this.render();};img.src=(C.tile_url||'https://tile.openstreetmap.org/{z}/{x}/{y}.png').replace('{z}',this.zoom).replace('{x}',tx).replace('{y}',ty);this.tiles[key]=true;}if(this.tiles[key] instanceof Image)this.ctx.drawImage(this.tiles[key],x*256-left,y*256-top,256,256);}const p=this.project(this.lat,this.lng);this.marker.style.left=(p.x-left)+'px';this.marker.style.top=(p.y-top)+'px';this.ctx.fillStyle='#00508d';this.points.forEach(point=>{const q=this.project(Number(point.lat),Number(point.lng));const x=q.x-left,y=q.y-top;if(x>=-6&&x<=w+6&&y>=-6&&y<=h+6){this.ctx.beginPath();this.ctx.arc(x,y,5,0,Math.PI*2);this.ctx.fill();}});}
-bind(){let drag=false,last=null,dragMarker=false;this.el.addEventListener('pointerdown',e=>{if(e.target===this.marker){dragMarker=true;this.el.setPointerCapture(e.pointerId);return;}drag=true;last={x:e.clientX,y:e.clientY};this.el.setPointerCapture(e.pointerId);});this.el.addEventListener('pointermove',e=>{const rect=this.el.getBoundingClientRect(),center=this.project(this.lat,this.lng),left=center.x-rect.width/2,top=center.y-rect.height/2;if(dragMarker){const q=this.unproject(left+(e.clientX-rect.left),top+(e.clientY-rect.top));this.setCenter(q.lat,q.lng);return;}if(!drag)return;const dx=e.clientX-last.x,dy=e.clientY-last.y;last={x:e.clientX,y:e.clientY};const c=this.project(this.lat,this.lng),q=this.unproject(c.x-dx,c.y-dy);this.setCenter(q.lat,q.lng);});const end=()=>{drag=false;dragMarker=false;};this.el.addEventListener('pointerup',end);this.el.addEventListener('pointercancel',end);this.el.addEventListener('wheel',e=>{e.preventDefault();this.zoom=Math.max(3,Math.min(18,this.zoom+(e.deltaY<0?1:-1)));this.render();},{passive:false});}}
-
-document.addEventListener('DOMContentLoaded',()=>{initAccount();qsa('[data-syvo-bd-wizard]').forEach(initWizard);qsa('[data-syvo-bd-search]').forEach(initSearch);initMaps();loadLocations();});
+ constructor(el,lat,lng,form){this.el=el;this.lat=lat;this.lng=lng;this.zoom=12;this.form=form;this.canvas=document.createElement('canvas');this.ctx=this.canvas.getContext('2d');this.tiles={};this.marker=document.createElement('div');this.marker.className='syvo-bd-map-marker';this.el.append(this.canvas,this.marker);this.resize();window.addEventListener('resize',()=>this.resize());this.bind();this.render()}
+ resize(){const d=devicePixelRatio||1;this.canvas.width=this.el.clientWidth*d;this.canvas.height=this.el.clientHeight*d;this.canvas.style.width='100%';this.canvas.style.height='100%';this.ctx.setTransform(d,0,0,d,0,0);this.render()}
+ project(lat,lng){const n=2**this.zoom,x=(lng+180)/360*n*256,y=(1-Math.asinh(Math.tan(lat*Math.PI/180))/Math.PI)/2*n*256;return{x,y}}
+ unproject(x,y){const n=2**this.zoom,lng=x/(n*256)*360-180,yy=2*(1-y/(n*256)),lat=180/Math.PI*(2*Math.atan(Math.exp(yy*Math.PI))-Math.PI/2);return{lat,lng}}
+ setCenter(lat,lng){this.lat=lat;this.lng=lng;this.render();if(this.form){this.form.elements.lat.value=lat;this.form.elements.lng.value=lng}}
+ render(){const w=this.el.clientWidth,h=this.el.clientHeight;if(!w||!h)return;const c=this.project(this.lat,this.lng),left=c.x-w/2,top=c.y-h/2;this.ctx.clearRect(0,0,w,h);for(let x=Math.floor(left/256);x<=Math.ceil((left+w)/256);x++)for(let y=Math.floor(top/256);y<=Math.ceil((top+h)/256);y++){const wrap=2**this.zoom,tx=((x%wrap)+wrap)%wrap,ty=y;if(ty<0||ty>=wrap)continue;const key=this.zoom+'/'+tx+'/'+ty;if(!this.tiles[key]){const im=new Image();im.onload=()=>{this.tiles[key]=im;this.render()};im.src=C.tile_url.replace('{z}',this.zoom).replace('{x}',tx).replace('{y}',ty);this.tiles[key]=true}if(this.tiles[key] instanceof Image)this.ctx.drawImage(this.tiles[key],x*256-left,y*256-top,256,256)}const p=this.project(this.lat,this.lng);this.marker.style.left=(p.x-left)+'px';this.marker.style.top=(p.y-top)+'px'}
+ bind(){let drag=false,last=null;this.el.addEventListener('pointerdown',e=>{drag=true;last={x:e.clientX,y:e.clientY};this.el.setPointerCapture(e.pointerId)});this.el.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-last.x,dy=e.clientY-last.y;last={x:e.clientX,y:e.clientY};const c=this.project(this.lat,this.lng);const q=this.unproject(c.x-dx,c.y-dy);this.setCenter(q.lat,q.lng)});const end=()=>drag=false;this.el.addEventListener('pointerup',end);this.el.addEventListener('pointercancel',end);this.el.addEventListener('wheel',e=>{e.preventDefault();this.zoom=Math.max(4,Math.min(17,this.zoom+(e.deltaY<0?1:-1)));this.render()},{passive:false})}
+}
+document.addEventListener('DOMContentLoaded',()=>{
+ document.body.classList.add('syvo-bd-body');
+ initAccount();
+ qa('[data-syvo-bd-wizard]').forEach(initWizard);
+ qa('[data-syvo-bd-search]').forEach(initSearchPage);
+ qa('[data-syvo-bd-directory-home]').forEach(initHome);
+ qa('[data-form-map]').forEach(el=>initMap(el,el.closest('form')));
+ qa('[data-map]').forEach(el=>initMap(el,null));
+});
 })(window,document);
