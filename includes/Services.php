@@ -66,27 +66,27 @@ final class SlugService {
 final class LocationService {
     public static function import(): bool|\WP_Error {
         $manifest=require SYVO_BD_DIR.'data/location-manifest.php';
-        $response=wp_remote_get($manifest['source_file'],['timeout'=>30,'redirection'=>2,'headers'=>['Accept'=>'application/json','User-Agent'=>'Syvo Business Directory/'.SYVO_BD_VERSION.' (https://syvo.ir)']]);
-        if(is_wp_error($response)) return $response;
-        if((int)wp_remote_retrieve_response_code($response)!==200) return new \WP_Error('location_source_http','Location dataset source returned HTTP '.(int)wp_remote_retrieve_response_code($response));
-        $data=json_decode(wp_remote_retrieve_body($response),true);
-        if(!is_array($data)||count($data)<1)return new \WP_Error('location_source_invalid','Location dataset response is invalid.');
-        global $wpdb; $table=DB::table('locations'); $now=current_time('mysql',true);
-        $wpdb->query('START TRANSACTION');
-        try {
+        $file=SYVO_BD_DIR.'data/iran_cities.min.json';
+        if(!is_readable($file))return new \WP_Error('location_dataset_missing','فایل داخلی داده‌های استان و شهرها پیدا نشد.');
+        $raw=file_get_contents($file); $data=is_string($raw)?json_decode($raw,true):null;
+        if(!is_array($data)||count($data)<1)return new \WP_Error('location_dataset_invalid','داده‌های داخلی استان و شهرها معتبر نیستند.');
+        global $wpdb; $table=DB::table('locations'); $now=current_time('mysql',true); $wpdb->query('START TRANSACTION');
+        try{
             $wpdb->query($wpdb->prepare("DELETE FROM {$table} WHERE dataset_version <> %s",$manifest['version']));
-            $provinceIds=[]; $countyIds=[];
+            $countyIds=[];
             foreach($data as $province){
-                $provinceRow=self::upsertRow((array)$province,'province',null,$manifest['version'],$now); $provinceIds[(string)$province['id']]=$provinceRow;
+                $provinceRow=self::upsertRow((array)$province,'province',null,$manifest['version'],$now);
                 foreach((array)($province['cities']??[]) as $city){
-                    $countyName=(string)($city['county']??''); $countyCode=(string)($city['county_code']??''); $countyKey=(string)$province['id'].':'.$countyCode;
-                    if(!isset($countyIds[$countyKey])) $countyIds[$countyKey]=self::upsertRow(['id'=>$countyKey,'name'=>$countyName,'english_name'=>'','official_code'=>$countyCode],'county',$provinceRow,$manifest['version'],$now);
-                    self::upsertRow($city,'city',$countyIds[$countyKey],$manifest['version'],$now);
+                    $countyName=(string)($city['county']??''); $countyCode=(string)($city['county_code']??'');
+                    $provinceSource=(string)($province['uid']??$province['id']??''); $countyKey=$provinceSource.':'.$countyCode;
+                    if(!isset($countyIds[$countyKey]))$countyIds[$countyKey]=self::upsertRow(['id'=>$countyKey,'name'=>$countyName,'english_name'=>'','official_code'=>$countyCode],'county',$provinceRow,$manifest['version'],$now);
+                    self::upsertRow((array)$city,'city',$countyIds[$countyKey],$manifest['version'],$now);
                 }
             }
-            $wpdb->query('COMMIT'); update_option('syvo_bd_location_import_status','complete',false); update_option('syvo_bd_location_dataset_version',$manifest['version'],false); return true;
-        } catch(\Throwable $e){ $wpdb->query('ROLLBACK'); update_option('syvo_bd_location_import_status','failed',false); return new \WP_Error('location_import_failed','Location dataset import failed: '.$e->getMessage()); }
+            $wpdb->query('COMMIT'); update_option('syvo_bd_location_import_status','complete',false); update_option('syvo_bd_location_dataset_version',$manifest['version'],false); update_option('syvo_bd_location_count',(int)$wpdb->get_var("SELECT COUNT(*) FROM {$table}"),false); return true;
+        }catch(\Throwable $ex){$wpdb->query('ROLLBACK');update_option('syvo_bd_location_import_status','failed',false);return new \WP_Error('location_import_failed','واردسازی داده‌های مکان انجام نشد: '.$ex->getMessage());}
     }
+
     private static function upsertRow(array $row,string $type,?int $parent,string $version,string $now): int {
         global $wpdb; $table=DB::table('locations');
         $sourceId=(string)($row['uid']??$row['official_code']??$row['id']??''); if($type==='county')$sourceId='county:'.$sourceId; if($sourceId==='')$sourceId=$type.':'.md5(wp_json_encode($row));

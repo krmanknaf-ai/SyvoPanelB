@@ -53,76 +53,43 @@ final class Plugin {
 
 final class Installer {
     private static bool $running = false;
-
-    public static function hooks(): void {
-        add_action('init', [self::class, 'run'], 1);
-    }
-
+    public static function hooks(): void { add_action('init', [self::class, 'run'], 1); }
     public static function run(): void {
-        if (self::$running || (!get_option('syvo_bd_pending_install', false) && (string) get_option('syvo_bd_db_version', '') === SYVO_BD_DB_VERSION)) {
-            return;
-        }
+        $pending = (bool) get_option('syvo_bd_pending_install', false);
+        $db = (string) get_option('syvo_bd_db_version', '');
+        if (self::$running || (!$pending && $db === SYVO_BD_DB_VERSION)) return;
         self::$running = true;
         try {
-            if (!class_exists(Database::class)) {
-                require_once SYVO_BD_DIR . 'includes/Database.php';
-            }
-            if (!class_exists(Register::class)) {
-                require_once SYVO_BD_DIR . 'includes/Services.php';
-            }
             require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-
-            $db = Database::install();
-            if (is_wp_error($db)) {
-                self::fail('database_install', $db->get_error_message());
-                return;
-            }
-            Register::post_types();
-            Register::taxonomies();
-            Capabilities::install();
-            Seed::categories();
+            $dbResult = Database::install();
+            if (is_wp_error($dbResult)) { self::fail('database_install', $dbResult->get_error_message()); return; }
+            Register::post_types(); Register::taxonomies(); Capabilities::install(); Seed::categories();
             $pages = CorePages::ensure();
-            if (is_wp_error($pages)) {
-                self::fail('core_pages', $pages->get_error_message());
-                return;
-            }
-
+            if (is_wp_error($pages)) { self::fail('core_pages', $pages->get_error_message()); return; }
             $defaults = [
-                'tile_url' => 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                'tile_attribution' => '© OpenStreetMap contributors',
-                'geocoder_url' => 'https://nominatim.openstreetmap.org/reverse',
-                'geocoder_user_agent' => 'Syvo Business Directory/' . SYVO_BD_VERSION . ' (https://syvo.ir)',
-                'geocoder_api_key' => '',
+                'tile_url'=>'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                'tile_attribution'=>'© OpenStreetMap contributors',
+                'geocoder_url'=>'https://nominatim.openstreetmap.org/reverse',
+                'geocoder_user_agent'=>'Syvo Business Directory/'.SYVO_BD_VERSION.' (https://syvo.ir)',
+                'geocoder_api_key'=>'',
             ];
-            add_option('syvo_bd_map_config', $defaults, '', false);
-            add_option('syvo_bd_delete_data_on_uninstall', false, '', false);
-            add_option('syvo_bd_location_import_status', 'queued', '', false);
-            add_option('syvo_bd_schema_version', SYVO_BD_DB_VERSION, '', false);
-            add_option('syvo_bd_db_version', SYVO_BD_DB_VERSION, '', false);
-            add_option('syvo_bd_location_dataset_version', '', '', false);
-            update_option('syvo_bd_version', SYVO_BD_VERSION, false);
-            update_option('syvo_bd_pending_install', 0, false);
-
-            Database::hooks();
-            Queue::schedule_recurring();
-            Queue::enqueue('import_locations', 'system', 0, [], 'locations:' . SYVO_BD_LOCATION_DATASET_VERSION, 1);
-            flush_rewrite_rules(false);
-            delete_option('syvo_bd_install_error');
-        } catch (\Throwable $e) {
-            self::fail('installer_exception', $e->getMessage(), $e);
-        } finally {
-            self::$running = false;
-        }
+            if (!get_option('syvo_bd_map_config', false)) add_option('syvo_bd_map_config', $defaults, '', false);
+            if ((string)get_option('syvo_bd_location_dataset_version','') !== SYVO_BD_LOCATION_DATASET_VERSION) {
+                $loc = LocationService::import();
+                if (is_wp_error($loc)) { self::fail('location_import', $loc->get_error_message()); return; }
+            }
+            update_option('syvo_bd_location_import_status','complete',false);
+            update_option('syvo_bd_schema_version',SYVO_BD_DB_VERSION,false);
+            update_option('syvo_bd_db_version',SYVO_BD_DB_VERSION,false);
+            update_option('syvo_bd_version',SYVO_BD_VERSION,false);
+            update_option('syvo_bd_pending_install',0,false);
+            Database::hooks(); Queue::schedule_recurring(); flush_rewrite_rules(false); delete_option('syvo_bd_install_error');
+        } catch (\Throwable $ex) { self::fail('installer_exception',$ex->getMessage(),$ex); }
+        finally { self::$running = false; }
     }
-
-    private static function fail(string $code, string $message, ?\Throwable $e = null): void {
-        update_option('syvo_bd_install_error', [
-            'time' => gmdate('Y-m-d H:i:s'),
-            'code' => $code,
-            'message' => sanitize_text_field($message),
-            'file' => $e ? basename($e->getFile()) : '',
-            'line' => $e ? (int) $e->getLine() : 0,
-        ], false);
+    private static function fail(string $code,string $message,?\Throwable $e=null): void {
+        update_option('syvo_bd_pending_install',1,false);
+        update_option('syvo_bd_install_error',['time'=>gmdate('Y-m-d H:i:s'),'code'=>$code,'message'=>sanitize_text_field($message),'file'=>$e?basename($e->getFile()):'','line'=>$e?(int)$e->getLine():0],false);
     }
 }
 
