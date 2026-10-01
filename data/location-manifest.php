@@ -2,7 +2,7 @@
 defined('ABSPATH') || exit;
 
 return [
-    'version' => '1402-mralfak-2026-09',
+    'version' => '1402-mralfak-2026-09-full-county',
     'source' => 'https://github.com/MrAlfak/List-of-provinces-and-cities-of-Iran',
     'source_file' => 'https://raw.githubusercontent.com/MrAlfak/List-of-provinces-and-cities-of-Iran/ae9cc635509f8e9568d8ec7f23e880f374d67b16/iran_cities.min.json',
     'source_commit' => 'ae9cc635509f8e9568d8ec7f23e880f374d67b16',
