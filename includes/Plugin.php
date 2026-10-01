@@ -208,36 +208,32 @@ final class CorePages {
     ];
 
     public static function ensure(): array|\WP_Error {
-        $ids = (array) get_option('syvo_bd_core_pages', []);
-        foreach (self::$definitions as $key => $def) {
-            if (!empty($ids[$key]) && get_post((int)$ids[$key]) && get_post_meta((int)$ids[$key], '_syvo_bd_core_page', true) === $key) { continue; }
-            $slug = self::resolve_slug($key);
-            $existing = wp_insert_post([
-                'post_type'=>'page','post_status'=>'publish','post_title'=>$def['title'],'post_name'=>$slug,'post_content'=>$def['shortcode'],
-            ], true);
-            if (is_wp_error($existing)) { return $existing; }
-            $id = (int)$existing;
-            update_post_meta($id, '_syvo_bd_core_page', $key);
-            $ids[$key] = $id;
+        $ids=(array)get_option('syvo_bd_core_pages',[]);
+        foreach(self::$definitions as $key=>$def){
+            $id=absint($ids[$key]??0);
+            $page=$id?get_post($id):null;
+            if(!$page)$page=get_page_by_path($key,OBJECT,'page');
+            if($page){
+                $id=(int)$page->ID;
+                wp_update_post(['ID'=>$id,'post_status'=>'publish','post_title'=>$def['title'],'post_content'=>$def['shortcode']]);
+                update_post_meta($id,'_syvo_bd_core_page',$key);
+                $ids[$key]=$id;
+                continue;
+            }
+            $created=wp_insert_post(['post_type'=>'page','post_status'=>'publish','post_title'=>$def['title'],'post_name'=>$key,'post_content'=>$def['shortcode']],true);
+            if(is_wp_error($created))return $created;
+            $id=(int)$created;
+            update_post_meta($id,'_syvo_bd_core_page',$key);
+            $ids[$key]=$id;
         }
-        update_option('syvo_bd_core_pages', $ids, false);
+        update_option('syvo_bd_core_pages',$ids,false);
         return $ids;
     }
 
     public static function url(string $key): string {
-        $ids = (array) get_option('syvo_bd_core_pages', []);
-        $id = absint($ids[$key] ?? 0);
-        return $id ? (string) get_permalink($id) : home_url('/');
-    }
-
-    private static function resolve_slug(string $requested): string {
-        $candidate = $requested;
-        $n = 2;
-        while (($page = get_page_by_path($candidate)) !== null) {
-            if (get_post_meta((int)$page->ID, '_syvo_bd_core_page', true) !== '') { return $candidate; }
-            $candidate = $requested . '-' . $n++;
-        }
-        return $candidate;
+        $ids=(array)get_option('syvo_bd_core_pages',[]);
+        $id=absint($ids[$key]??0);
+        return $id?get_permalink($id):home_url('/'.$key.'/');
     }
 }
 
