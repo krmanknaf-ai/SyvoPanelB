@@ -1,0 +1,28 @@
+name: Build Syvo Business Directory
+on:
+  push:
+    branches:
+      - build/location-data-temp
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate plugin PHP and data
+        run: |
+          set -e
+          php -v
+          for f in syvo-business-directory/*.php syvo-business-directory/includes/*.php syvo-business-directory/templates/*.php syvo-business-directory/uninstall.php; do php -l "$f"; done
+          php -r '$d=json_decode(file_get_contents("syvo-business-directory/data/iran_cities.min.json"), true); if(!is_array($d)||count($d)!==31) exit(1); $cities=0; foreach($d as $p){$cities += count($p["cities"] ?? []);} if($cities < 300) exit(1); echo "provinces=".count($d)." cities=".$cities.PHP_EOL;'
+      - name: Package plugin
+        run: |
+          set -e
+          rm -rf package
+          mkdir -p package
+          cp -a syvo-business-directory package/syvo-business-directory
+          cd package
+          zip -qr ../syvo-business-directory-v1.2.0.zip syvo-business-directory
+      - uses: actions/upload-artifact@v4
+        with:
+          name: syvo-business-directory-v1.2.0
+          path: syvo-business-directory-v1.2.0.zip
