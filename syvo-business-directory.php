@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Syvo Business Directory
  * Description: Production-ready local business directory, local search, and SEO/GEO landing engine for Syvo.
- * Version: 1.0.1
+ * Version: 1.0.3
  * Requires at least: 7.0
  * Requires PHP: 8.1
  * Author: Syvo
@@ -19,8 +19,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('SYVO_BD_VERSION', '1.0.1');
-define('SYVO_BD_DB_VERSION', '1.0.1');
+define('SYVO_BD_VERSION', '1.0.3');
+define('SYVO_BD_DB_VERSION', '1.0.3');
 define('SYVO_BD_LOCATION_DATASET_VERSION', '1402-mralfak-2026-09');
 define('SYVO_BD_FILE', __FILE__);
 define('SYVO_BD_DIR', plugin_dir_path(__FILE__));

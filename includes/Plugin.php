@@ -12,6 +12,7 @@ final class Plugin {
         foreach (['Database.php','Domain.php','Services.php','AI.php','REST.php','Frontend.php','Admin.php','Compatibility.php','Privacy.php'] as $file) {
             require_once SYVO_BD_DIR . 'includes/' . $file;
         }
+        Installer::hooks();
         Database::hooks();
         Services::hooks();
         AIService::hooks();
@@ -20,41 +21,138 @@ final class Plugin {
         Admin::hooks();
         Compatibility::hooks();
         Privacy::hooks();
-        Upgrade::maybe();
-    }
-
-    public static function activate(): void {
-        self::boot();
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        $result = Activation::run();
-        if (is_wp_error($result)) {
-            update_option('syvo_bd_activation_error', [
-                'time' => current_time('mysql', true),
-                'code' => $result->get_error_code(),
-                'message' => $result->get_error_message(),
-            ], false);
-            deactivate_plugins(plugin_basename(SYVO_BD_FILE));
-            throw new \RuntimeException($result->get_error_message());
+        if ((string) get_option('syvo_bd_db_version', '') !== SYVO_BD_DB_VERSION) {
+            update_option('syvo_bd_pending_install', 1, false);
         }
     }
 
+    public static function activate(): void {
+        // Deliberately minimal. WordPress must be able to activate the plugin even
+        // when database/schema/remote/location setup encounters an environment-specific issue.
+        // The full installer runs on the next normal WordPress request and is guarded by
+        // Installer::run(), which records structured diagnostics instead of generating a fatal.
+        add_option('syvo_bd_pending_install', 1, '', false);
+        add_option('syvo_bd_version', SYVO_BD_VERSION, '', false);
+        delete_option('syvo_bd_activation_error');
+    }
+
     public static function deactivate(): void {
-        self::boot();
-        Queue::unschedule_all();
-        flush_rewrite_rules(false);
+        try {
+            require_once SYVO_BD_DIR . 'includes/Services.php';
+            Queue::unschedule_all();
+            flush_rewrite_rules(false);
+        } catch (\Throwable $e) {
+            update_option('syvo_bd_deactivation_error', [
+                'time' => gmdate('Y-m-d H:i:s'),
+                'message' => sanitize_text_field($e->getMessage()),
+            ], false);
+        }
     }
 }
 
 
+final class Installer {
+    private static bool $running = false;
+
+    public static function hooks(): void {
+        add_action('init', [self::class, 'run'], 1);
+    }
+
+    public static function run(): void {
+        if (self::$running || (!get_option('syvo_bd_pending_install', false) && (string) get_option('syvo_bd_db_version', '') === SYVO_BD_DB_VERSION)) {
+            return;
+        }
+        self::$running = true;
+        try {
+            if (!class_exists(Database::class)) {
+                require_once SYVO_BD_DIR . 'includes/Database.php';
+            }
+            if (!class_exists(Register::class)) {
+                require_once SYVO_BD_DIR . 'includes/Services.php';
+            }
+            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+            $db = Database::install();
+            if (is_wp_error($db)) {
+                self::fail('database_install', $db->get_error_message());
+                return;
+            }
+            Register::post_types();
+            Register::taxonomies();
+            Capabilities::install();
+            Seed::categories();
+            $pages = CorePages::ensure();
+            if (is_wp_error($pages)) {
+                self::fail('core_pages', $pages->get_error_message());
+                return;
+            }
+
+            $defaults = [
+                'tile_url' => 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                'tile_attribution' => '© OpenStreetMap contributors',
+                'geocoder_url' => 'https://nominatim.openstreetmap.org/reverse',
+                'geocoder_user_agent' => 'Syvo Business Directory/' . SYVO_BD_VERSION . ' (https://syvo.ir)',
+                'geocoder_api_key' => '',
+            ];
+            add_option('syvo_bd_map_config', $defaults, '', false);
+            add_option('syvo_bd_delete_data_on_uninstall', false, '', false);
+            add_option('syvo_bd_location_import_status', 'queued', '', false);
+            add_option('syvo_bd_schema_version', SYVO_BD_DB_VERSION, '', false);
+            add_option('syvo_bd_db_version', SYVO_BD_DB_VERSION, '', false);
+            add_option('syvo_bd_location_dataset_version', '', '', false);
+            update_option('syvo_bd_version', SYVO_BD_VERSION, false);
+            update_option('syvo_bd_pending_install', 0, false);
+
+            Database::hooks();
+            Queue::schedule_recurring();
+            Queue::enqueue('import_locations', 'system', 0, [], 'locations:' . SYVO_BD_LOCATION_DATASET_VERSION, 1);
+            flush_rewrite_rules(false);
+            delete_option('syvo_bd_install_error');
+        } catch (\Throwable $e) {
+            self::fail('installer_exception', $e->getMessage(), $e);
+        } finally {
+            self::$running = false;
+        }
+    }
+
+    private static function fail(string $code, string $message, ?\Throwable $e = null): void {
+        update_option('syvo_bd_install_error', [
+            'time' => gmdate('Y-m-d H:i:s'),
+            'code' => $code,
+            'message' => sanitize_text_field($message),
+            'file' => $e ? basename($e->getFile()) : '',
+            'line' => $e ? (int) $e->getLine() : 0,
+        ], false);
+    }
+}
+
 final class Upgrade {
     public static function maybe(): void {
-        $db=(string)get_option('syvo_bd_db_version','');
-        if($db!==SYVO_BD_DB_VERSION){
-            $result=Database::install();
-            if(!is_wp_error($result)){ Register::post_types(); Register::taxonomies(); Capabilities::install(); Seed::categories(); update_option('syvo_bd_db_version',SYVO_BD_DB_VERSION,false); update_option('syvo_bd_version',SYVO_BD_VERSION,false); }
+        try {
+            $db = (string) get_option('syvo_bd_db_version', '');
+            if ($db !== SYVO_BD_DB_VERSION) {
+                $result = Database::install();
+                if (!is_wp_error($result)) {
+                    Register::post_types();
+                    Register::taxonomies();
+                    Capabilities::install();
+                    Seed::categories();
+                    update_option('syvo_bd_db_version', SYVO_BD_DB_VERSION, false);
+                    update_option('syvo_bd_version', SYVO_BD_VERSION, false);
+                }
+            }
+            Queue::schedule_recurring();
+            if ((string) get_option('syvo_bd_location_dataset_version', '') !== SYVO_BD_LOCATION_DATASET_VERSION) {
+                Queue::enqueue('import_locations', 'system', 0, [], 'locations:' . SYVO_BD_LOCATION_DATASET_VERSION, 1);
+            }
+        } catch (\Throwable $e) {
+            update_option('syvo_bd_upgrade_error', [
+                'time' => gmdate('Y-m-d H:i:s'),
+                'message' => sanitize_text_field($e->getMessage()),
+                'file' => basename($e->getFile()),
+                'line' => (int) $e->getLine(),
+            ], false);
         }
-        Queue::schedule_recurring();
-        if((string)get_option('syvo_bd_location_dataset_version','')!==SYVO_BD_LOCATION_DATASET_VERSION){ Queue::enqueue('import_locations','system',0,[],'locations:'.SYVO_BD_LOCATION_DATASET_VERSION,1); }
     }
 }
 

@@ -2,7 +2,7 @@
 Contributors: syvo
 Requires at least: 7.0
 Requires PHP: 8.1
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 License: GPLv2 or later
 Text Domain: syvo-business-directory
 

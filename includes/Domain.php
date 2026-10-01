@@ -59,7 +59,7 @@ final class Security {
     public static function email(string $value): string { $v=sanitize_email(trim($value)); return is_email($v)?$v:''; }
     public static function rate_limit(string $bucket,string $key,int $max,int $window): bool {
         global $wpdb; $table=DB::table('rate_limits'); $hash=hash_hmac('sha256',$bucket.'|'.$key,wp_salt('auth')); $now=time();
-        $row=$wpdb->get_row($wpdb->prepare("SELECT hits, reset_at FROM {$table} WHERE key_hash=%s AND bucket=%s",$hash,$bucket),ARRAY_A);
+        $row=$wpdb->get_row($wpdb->prepare("SELECT hits, reset_at FROM {$table} WHERE key_hash=%s AND bucket=%s",$hash,$bucket),\ARRAY_A);
         if(!$row || strtotime((string)$row['reset_at'])<=$now){$wpdb->replace($table,['key_hash'=>$hash,'bucket'=>$bucket,'hits'=>1,'reset_at'=>gmdate('Y-m-d H:i:s',$now+$window)],['%s','%s','%d','%s']);return true;}
         if((int)$row['hits']>=$max)return false; $wpdb->query($wpdb->prepare("UPDATE {$table} SET hits=hits+1 WHERE key_hash=%s AND bucket=%s",$hash,$bucket)); return true;
     }
