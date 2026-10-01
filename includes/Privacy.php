@@ -1,0 +1,12 @@
+<?php
+declare(strict_types=1);
+namespace Syvo\BusinessDirectory;
+if (!defined('ABSPATH')) { exit; }
+
+final class Privacy {
+    public static function hooks(): void { add_filter('wp_privacy_personal_data_exporters',[self::class,'exporters']); add_filter('wp_privacy_personal_data_erasers',[self::class,'erasers']); }
+    public static function exporters(array $exporters): array { $exporters['syvo-business-directory']=['exporter_friendly_name'=>'Syvo Business Directory','callback'=>[self::class,'export']];return$exporters; }
+    public static function erasers(array $erasers): array { $erasers['syvo-business-directory']=['eraser_friendly_name'=>'Syvo Business Directory','callback'=>[self::class,'erase']];return$erasers; }
+    public static function export(string $email,int $page=1): array { $user=get_user_by('email',$email);if(!$user)return['data'=>[],'done'=>true];$data=[];$mobile=(string)get_user_meta($user->ID,BusinessMeta::MOBILE,true);$data[]=['group_id'=>'syvo-account','group_label'=>'Syvo Business Directory','item_id'=>'user-'.$user->ID,'data'=>[['name'=>'email','value'=>$user->user_email],['name'=>'mobile','value'=>$mobile],['name'=>'registered','value'=>$user->user_registered]]];$ids=get_posts(['post_type'=>SYVO_BD_CPT,'post_status'=>['publish','draft','private','trash'],'author'=>$user->ID,'posts_per_page'=>-1,'fields'=>'ids']);foreach($ids as $id){$data[]=['group_id'=>'syvo-business','group_label'=>'کسب‌وکارها','item_id'=>'business-'.$id,'data'=>[['name'=>'title','value'=>get_the_title($id)],['name'=>'status','value'=>get_post_status($id)],['name'=>'city','value'=>(string)(LocationService::find(absint(get_post_meta($id,BusinessMeta::CITY_ID,true)))['name_fa']??'')]]];}return['data'=>$data,'done'=>true]; }
+    public static function erase(string $email,int $page=1): array { $user=get_user_by('email',$email);if(!$user)return['items_removed'=>false,'items_retained'=>false,'messages'=>[],'done'=>true];delete_user_meta($user->ID,BusinessMeta::MOBILE);delete_user_meta($user->ID,BusinessMeta::NATIONAL_ID);delete_user_meta($user->ID,BusinessMeta::NATIONAL_ID_FP);$ids=get_posts(['post_type'=>SYVO_BD_CPT,'post_status'=>['publish','draft','private','trash'],'author'=>$user->ID,'posts_per_page'=>-1,'fields'=>'ids']);foreach($ids as $id)wp_trash_post((int)$id);return['items_removed'=>true,'items_retained'=>false,'messages'=>['کسب‌وکارهای مالکیت‌شده به سطل زباله منتقل شدند.'],'done'=>true]; }
+}
