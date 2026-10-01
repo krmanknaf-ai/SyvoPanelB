@@ -67,24 +67,39 @@ final class LocationService {
     public static function import(): bool|\WP_Error {
         $manifest=require SYVO_BD_DIR.'data/location-manifest.php';
         $file=SYVO_BD_DIR.'data/iran_cities.min.json';
-        if(!is_readable($file))return new \WP_Error('location_dataset_missing','فایل داخلی داده‌های استان و شهرها پیدا نشد.');
-        $raw=file_get_contents($file); $data=is_string($raw)?json_decode($raw,true):null;
-        if(!is_array($data)||count($data)<1)return new \WP_Error('location_dataset_invalid','داده‌های داخلی استان و شهرها معتبر نیستند.');
-        global $wpdb; $table=DB::table('locations'); $now=current_time('mysql',true); $wpdb->query('START TRANSACTION');
+        if(!is_readable($file))return new \WP_Error('location_dataset_missing','فایل داخلی داده‌های مکان پیدا نشد.');
+        $raw=file_get_contents($file);$data=is_string($raw)?json_decode($raw,true):null;
+        if(!is_array($data)||!$data)return new \WP_Error('location_dataset_invalid','داده‌های داخلی مکان معتبر نیستند.');
+        global $wpdb;$table=DB::table('locations');$now=current_time('mysql',true);$wpdb->query('START TRANSACTION');
         try{
             $wpdb->query($wpdb->prepare("DELETE FROM {$table} WHERE dataset_version <> %s",$manifest['version']));
             $countyIds=[];
             foreach($data as $province){
-                $provinceRow=self::upsertRow((array)$province,'province',null,$manifest['version'],$now);
+                $provinceId=self::upsertRow((array)$province,'province',null,$manifest['version'],$now);
+                $provinceKey=(string)($province['uid']??$province['official_code']??$province['id']??'');
                 foreach((array)($province['cities']??[]) as $city){
-                    $countyName=(string)($city['county']??''); $countyCode=(string)($city['county_code']??'');
-                    $provinceSource=(string)($province['uid']??$province['id']??''); $countyKey=$provinceSource.':'.$countyCode;
-                    if(!isset($countyIds[$countyKey]))$countyIds[$countyKey]=self::upsertRow(['id'=>$countyKey,'name'=>$countyName,'english_name'=>'','official_code'=>$countyCode],'county',$provinceRow,$manifest['version'],$now);
-                    self::upsertRow((array)$city,'city',$countyIds[$countyKey],$manifest['version'],$now);
+                    $countyName=sanitize_text_field((string)($city['county']??''));
+                    $countyCode=(string)($city['county_code']??'');
+                    $countyKey=$provinceKey.'|'.$countyCode;
+                    if($countyName==='')$countyName=(string)($province['province']??'');
+                    if(!isset($countyIds[$countyKey])){
+                        $countyIds[$countyKey]=self::upsertRow(
+                            ['uid'=>'ir:county:'.$provinceKey.':'.$countyCode,'official_code'=>$provinceKey.':'.$countyCode,'name'=>$countyName,'english_name'=>''],
+                            'county',$provinceId,$manifest['version'],$now
+                        );
+                    }
+                    self::upsertRow((array)$city,'city',(int)$countyIds[$countyKey],$manifest['version'],$now);
                 }
             }
-            $wpdb->query('COMMIT'); update_option('syvo_bd_location_import_status','complete',false); update_option('syvo_bd_location_dataset_version',$manifest['version'],false); update_option('syvo_bd_location_count',(int)$wpdb->get_var("SELECT COUNT(*) FROM {$table}"),false); return true;
-        }catch(\Throwable $ex){$wpdb->query('ROLLBACK');update_option('syvo_bd_location_import_status','failed',false);return new \WP_Error('location_import_failed','واردسازی داده‌های مکان انجام نشد: '.$ex->getMessage());}
+            $wpdb->query('COMMIT');
+            update_option('syvo_bd_location_import_status','complete',false);
+            update_option('syvo_bd_location_dataset_version',$manifest['version'],false);
+            update_option('syvo_bd_location_count',(int)$wpdb->get_var("SELECT COUNT(*) FROM {$table}"),false);
+            return true;
+        }catch(\Throwable $e){
+            $wpdb->query('ROLLBACK');update_option('syvo_bd_location_import_status','failed',false);
+            return new \WP_Error('location_import_failed','واردسازی استان، شهرستان و شهر انجام نشد: '.$e->getMessage());
+        }
     }
 
     private static function upsertRow(array $row,string $type,?int $parent,string $version,string $now): int {
@@ -245,5 +260,6 @@ final class SeoService {
 
 final class FrontendAssets {
     public static function enqueue(): void { wp_enqueue_style('syvo-bd',SYVO_BD_URL.'assets/css/app.css',[],SYVO_BD_VERSION);wp_enqueue_script('syvo-bd',SYVO_BD_URL.'assets/js/app.js',[],SYVO_BD_VERSION,true);wp_localize_script('syvo-bd','SyvoBDConfig',['rest'=>esc_url_raw(rest_url(SYVO_BD_REST_NAMESPACE.'/')),'nonce'=>wp_create_nonce('wp_rest'),'home'=>esc_url_raw(home_url('/')),'tile_url'=>get_option('syvo_bd_map_config')['tile_url']??'']); }
+    public static function body_class(array $classes): array { if (is_page(['hiper','directory-search','register-business','business-login','dashboard']) || RewriteService::current_route() || is_singular(SYVO_BD_CPT)) $classes[]='syvo-bd-body'; return $classes; }
     public static function footer_config(): void {}
 }
