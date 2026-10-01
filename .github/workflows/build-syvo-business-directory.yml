@@ -12,14 +12,14 @@ jobs:
         run: |
           set -e
           php -v
-          for f in syvo-business-directory/*.php syvo-business-directory/includes/*.php syvo-business-directory/templates/*.php syvo-business-directory/uninstall.php; do php -l "$f"; done
-          php -r '$d=json_decode(file_get_contents("syvo-business-directory/data/iran_cities.min.json"), true); if(!is_array($d)||count($d)!==31) exit(1); $cities=0; foreach($d as $p){$cities += count($p["cities"] ?? []);} if($cities < 300) exit(1); echo "provinces=".count($d)." cities=".$cities.PHP_EOL;'
+          for f in *.php includes/*.php templates/*.php uninstall.php; do php -l "$f"; done
+          php -r '$d=json_decode(file_get_contents("data/iran_cities.min.json"), true); if(!is_array($d)||count($d)!==31) exit(1); $cities=0; $counties=[]; foreach($d as $p){$cities += count($p["cities"] ?? []); foreach(($p["cities"] ?? []) as $c){$counties[(string)($p["uid"]??"")."|".(string)($c["county_code"]??"")."|".(string)($c["county"]??"")]=1;}} if($cities < 1000 || count($counties)<400) exit(1); echo "provinces=".count($d)." cities=".$cities." counties=".count($counties).PHP_EOL;'
       - name: Package plugin
         run: |
           set -e
           rm -rf package
-          mkdir -p package
-          cp -a syvo-business-directory package/syvo-business-directory
+          mkdir -p package/syvo-business-directory
+          rsync -a --exclude='.git' --exclude='.github' --exclude='build' --exclude='README.md' ./ package/syvo-business-directory/
           cd package
           zip -qr ../syvo-business-directory-v1.2.0.zip syvo-business-directory
       - uses: actions/upload-artifact@v4
